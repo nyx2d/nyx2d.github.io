@@ -1,0 +1,44 @@
+baseURL = 'https://nyx2d.github.io/'
+languageCode = 'en-us'
+title = 'nyx2d'
+publishDir = 'docs'
+
+theme = 'etch'
+enableInlineShortcodes = true
+pygmentsCodeFences = true
+pygmentsUseClasses = true
+
+[params]
+  description = "small homepage of a developer interested in decentralization"
+  copyright = "- nyx2d ♥"
+  dark = "auto"
+  highlight = true
+
+[menu]
+  [[menu.main]]
+    identifier = "posts"
+    name = "posts"
+    title = "posts"
+    url = "/"
+    weight = 10
+  
+  [[menu.main]]
+    identifier = "reading"
+    name = "reading"
+    title = "reading"
+    url = "/reading"
+    weight = 15
+
+  [[menu.main]]
+    identifier = "about"
+    name = "about"
+    title = "about"
+    url = "/about"
+    weight = 20
+
+[permalinks]
+  posts = "/:title/"
+
+[markup.goldmark.renderer]
+  # Allows HTML in Markdown
+  unsafe = true
