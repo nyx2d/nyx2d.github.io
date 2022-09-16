@@ -10,15 +10,15 @@ it's in rough find order. I only title links where the context is impossible to 
 
 ## to read
 
-* http://docs.peachcloud.org/introduction.html
 * https://martin.kleppmann.com/papers/bft-crdt-papoc22.pdf
 * https://applied-langua.ge/software-and-anarchy.pdf
 * https://applied-langua.ge/posts/here-is-a-loud-announcement.html
 * https://gsd.di.uminho.pt/members/jop/pdfs/LPR07a.pdf
-* https://gitlab.com/cal-coop/netfarm/netfarm
 
 ## currently reading 
 
+* https://gitlab.com/cal-coop/netfarm/netfarm / https://cal-coop.gitlab.io/netfarm/documentation/Introduction.html
+* http://docs.peachcloud.org/introduction.html
 * [Local Crypto-Tokens for Local Economics](https://viewer.scuttlebot.io/%263VbqUowZBxGIx%2Fd2BD72yGlbpqer2%2FPJVzUFBgex4AY%3D.sha256)
 * https://p2panda.org/learn
 
