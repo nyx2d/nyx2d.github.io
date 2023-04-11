@@ -10,27 +10,30 @@ it's in rough find order. I only title links where the context is impossible to 
 
 ## to read
 
-* [Policy Gradient Algorithms](https://lilianweng.github.io/posts/2018-04-08-policy-gradient/)
-* [The Annotated GPT-2](https://amaarora.github.io/2020/02/18/annotatedGPT2.html)
-* [Building a GPT-like Model from Scratch with Detailed Theory and Code Implementation](https://habr.com/en/company/ods/blog/708672/)
+* [Merkle Search Trees: Efficient State-Based CRDTs in Open Networks](https://hal.inria.fr/hal-02303490/document)
 
 ## currently reading 
 
-* [A (Long) Peek into Reinforcement Learning](https://lilianweng.github.io/posts/2018-02-19-rl-overview)
+* [Policy Gradient Algorithms](https://lilianweng.github.io/posts/2018-04-08-policy-gradient/)
 
 ## backburner
 
+* [A (Long) Peek into Reinforcement Learning](https://lilianweng.github.io/posts/2018-02-19-rl-overview)
 * [Range-Based Set Reconciliation and Authenticated Set Representations](https://arxiv.org/pdf/2212.13567.pdf)
-* http://docs.peachcloud.org/introduction.html
 * https://gsd.di.uminho.pt/members/jop/pdfs/LPR07a.pdf
-* https://applied-langua.ge/software-and-anarchy.pdf
 * [Local Crypto-Tokens for Local Economics](https://viewer.scuttlebot.io/%263VbqUowZBxGIx%2Fd2BD72yGlbpqer2%2FPJVzUFBgex4AY%3D.sha256)
-* https://automerge.org/
-* https://mattweidner.com/2022/02/10/collaborative-data-design.html
-* https://crdt.tech/implementations
 
 ## read, want to remember
 
+* https://mattweidner.com/2022/02/10/collaborative-data-design.html
+* https://crdt.tech/implementations
+* https://automerge.org/
+* https://applied-langua.ge/software-and-anarchy.pdf
+* http://docs.peachcloud.org/introduction.html
+* [The Annotated GPT-2](https://amaarora.github.io/2020/02/18/annotatedGPT2.html)
+* [Building a GPT-like Model from Scratch with Detailed Theory and Code Implementation](https://habr.com/en/company/ods/blog/708672/)
+* [Scaling Instruction-Finetuned Language Models](https://arxiv.org/pdf/2210.11416.pdf)
+* [The Annotated Transformer](http://nlp.seas.harvard.edu/annotated-transformer/)
 * https://blogs.newardassociates.com/blog/2023/you-want-modules-not-microservices.html
 * https://deno.land/x/earthstar@v10.0.0/mod.ts
 * https://martin.kleppmann.com/papers/bft-crdt-papoc22.pdf
