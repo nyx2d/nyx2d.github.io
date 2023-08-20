@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="/style.css">
+    <link rel="shortcut icon" href="/favicon.ico">
+    <title>nyx.codes</title>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/default.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/go.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/protobuf.min.js"></script>
+</head>
+
+<body>
+    <header>
+        <img src="/nyx.png">
+        <span>
+            <h1>nyx2d</h1>
+            <p>
+                software engineer with an interest in decentralization
+            </p>
+            <nav>[ <a href="/">home</a> | <a href="/reading">reading</a> ]</nav>
+        </span>
+    </header>
+
+    <hr>
+
+    <h2 id="post-title">explorations in p2p development</h2>
+    <span id="date">[2023-08-19]</span>
+
+    <p>
+        this post is a work in progress. please note that in code snippets I have removed error handling for the sake of
+        brevity.
+    </p>
+
+    <p>
+        I have long known that I'm a tactile learner when it comes to software.
+        I never feel like I truly understand something until I've built (or attempted to build) a prototype or proof of
+        concept. at this point in my programming career, I probably have hundreds of unfinished projects on my drive.
+        completion is never the point - I do enough to get some critical concepts to stick and then move on.
+    </p>
+
+    <p>
+        I've been fascinated by p2p technology for a long time. within the last few years I've been
+        keeping my eye on several cool projects, especially things like
+        <a href="https://scuttlebutt.nz/" target="_blank">ssb</a>,
+        <a href="https://earthstar-project.org/" target="_blank">earthstar</a>,
+        <a href="https://github.com/hypercore-protocol" target="_blank">hypercore</a>, and
+        <a href="https://p2panda.org/" target="_blank">p2panda</a>.
+    </p>
+
+    <p>
+        I've hacked on a number of p2p adjacent things over the years, including a (very) small social network that
+        works over WebRTC and uses public/private key pairs for identity. still, I had never really gotten my hands
+        dirty with lower level implementations. this is a quick and dirty log of my process doing that.
+    </p>
+
+    <h2>a toy network</h2>
+
+    <p2>
+        I decided to write my experimental network in Go, since I'm pretty comfortable in it. first things first, I
+        decided on using <a href="https://ed25519.cr.yp.to/" target="_blank">ed25519</a> key pairs
+        for identity on the network. this is, unsurprisingly, the same thing ssb uses. go also includes "crypto/ed25519"
+        in the standard library.
+    </p2>
+
+    <p> for legible IDs I decided on a simple base64 encoding.</p>
+
+    <pre><code class="language-go">
+pubKey, privateKey, _ := ed25519.GenerateKey(rand.Reader)
+peerID := base64.StdEncoding.EncodeToString(pubKey)    
+    </code></pre>
+
+    <h2>peer discovery</h2>
+
+    <p>
+        next up was local peer discovery. I considered a few options here,
+        including rolling my own UDP broadcast based system, but ultimately
+        decided to use mDNS alongside DNS-SD. as it turns out, this is also <a
+            href="https://gwil.garden/posts/es_update_04_23" target="_blank">the approach earthstar is working on</a>.
+    </p>
+
+    <p>
+        turns out there's already a <a href="https://github.com/hashicorp/mdns" target="_blank">great go library by
+            hashicorp</a>
+        focused on this exact use-case (mDNS+DNS-SD). it was very easy to setup service advertising.
+    </p>
+
+    <pre><code class="language-go">
+func Broadcast(peerID string, servicePort int) {
+    service, _ := mdns.NewMDNSService(peerID, "my_network", "", "", servicePort, nil, []string{peerID})
+    server, _ := mdns.NewServer(&mdns.Config{Zone: service}) // kicks off goroutine in constructor
+    log.Printf("broadcasting as peer %s\n", peerID)
+}
+    </code></pre>
+
+    <p>
+        to enable discovery on the other end, I wrote a simple function that preforms an mDNS query every few seconds.
+        I spawn a goroutine to run this indefinitely.
+    </p>
+
+    <pre><code class="language-go">
+func FindPeers(peerID string) {
+    ticker := time.NewTicker(scanPeriod)
+    for ; true; <-ticker.C {
+        entries := make(chan *mdns.ServiceEntry, 256)
+        mdns.Query(&mdns.QueryParam{Service: serviceName, Domain: "local", Timeout: scanPeriod, Entries: entries, DisableIPv6: true})
+    
+    loop:
+        for {
+            select {
+            case entry := <-entries:
+                addr := &net.TCPAddr{IP: entry.AddrV4, Port: entry.Port}
+                if entry.Info != peerID {
+                    // handle newly discovered peer
+                }
+
+            case <-time.After(scanPeriod):
+                break loop
+            }
+        }
+    }
+}
+    </code></pre>
+
+    <h2>peer to peer communication</h2>
+
+    <p>
+        after discovery, my next step was deciding on the actual communication protocol. I considered a few options,
+        including rolling something from scratch using UDP (to more easily support NAT traversal). ultimately I decided
+        to just use <a href="https://grpc.io/" target="_blank">gRPC</a>, as it's very well established and supports
+        <a href="https://protobuf.dev/" target="_blank">protocol buffers</a>.
+    </p>
+
+    <p>
+        setting up a grpc server is very straightforward. you first need to define a protobuf file that defines the RPC
+        interface. you then run the protobuf code generator, which outputs Go.
+    </p>
+
+    <pre><code class="language-protobuf">
+message Message {
+    oneof content {
+        SignedMessage signed_message = 1;
+    }
+}
+
+service Network {
+    rpc Gossip(stream Message) returns (stream Message);
+}
+    </code></pre>
+
+    <p>
+        you then just need to implement the server interface. I decided to use a single rpc call with bidirectional
+        streaming in an attempt to dissolve the distinction between client and server gRPC implicitly has.
+    </p>
+
+    <pre><code class="language-go">
+type server struct {
+    pb.UnimplementedNetworkServer
+}
+
+func (s *server) Gossip(stream pb.Network_GossipServer) error {
+    for {
+        val, err := stream.Recv()
+        if err == io.EOF {
+            break
+        }
+        // handle message
+    }
+    return nil
+}
+    </code></pre>
+
+    <p>
+        to actually register your server instance, you just need to bind it to a TCP socket. this is also where we get
+        auto assigned port info to pass to our earlier broadcast function.
+    </p>
+
+    <pre><code class="language-go">
+func Serve(peerID string) int {
+    lis, _ := net.Listen("tcp", ":0")
+    pb.RegisterNetworkServer(grpc.NewServer(), &server{})
+    go func() {
+        log.Printf("gRPC server listening at %v", lis.Addr())
+        s.Serve(lis)
+    }()
+    return lis.Addr().(*net.TCPAddr).Port, nil
+}
+    </code></pre>
+
+    <script>hljs.highlightAll();</script>
+</body>
+
+</html>
