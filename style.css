@@ -34,3 +34,12 @@ hr {
     border: none;
     border-top: 1px dashed #9f9f9f;
 }
+
+#post-title {
+    margin-bottom: 0;
+}
+
+#date {
+    margin-left: 1ch;
+    font-size: .8rem;
+}
