@@ -63,7 +63,7 @@
     <p2>
         I decided to write my experimental network in Go, since I'm pretty comfortable in it. first things first, I
         decided on using <a href="https://ed25519.cr.yp.to/" target="_blank">ed25519</a> key pairs
-        for identity on the network. this is, unsurprisingly, the same thing ssb uses. go also includes "crypto/ed25519"
+        for identity on the network. this is, unsurprisingly, the same thing ssb uses. Go also includes "crypto/ed25519"
         in the standard library.
     </p2>
 
@@ -84,8 +84,7 @@ peerID := base64.StdEncoding.EncodeToString(pubKey)
     </p>
 
     <p>
-        turns out there's already a <a href="https://github.com/hashicorp/mdns" target="_blank">great go library by
-            hashicorp</a>
+        there's already a <a href="https://github.com/hashicorp/mdns" target="_blank">great go library by hashicorp</a>
         focused on this exact use-case (mDNS+DNS-SD). it was very easy to setup service advertising.
     </p>
 
@@ -103,28 +102,27 @@ func Broadcast(peerID string, servicePort int) {
     </p>
 
     <pre><code class="language-go">
-func FindPeers(peerID string) {
-    ticker := time.NewTicker(scanPeriod)
-    for ; true; <-ticker.C {
-        entries := make(chan *mdns.ServiceEntry, 256)
-        mdns.Query(&mdns.QueryParam{Service: serviceName, Domain: "local", Timeout: scanPeriod, Entries: entries, DisableIPv6: true})
-    
-    loop:
-        for {
-            select {
-            case entry := <-entries:
-                addr := &net.TCPAddr{IP: entry.AddrV4, Port: entry.Port}
-                if entry.Info != peerID {
-                    // handle newly discovered peer
-                }
+const period = 10 * time.Second
+const timeout = 2 * time.Second
+const bufferSize = 256
 
-            case <-time.After(scanPeriod):
-                break loop
+func FindPeers(peerID string) {
+    ticker := time.NewTicker(period)
+    for ; true; <-ticker.C {
+        entriesChan := make(chan *mdns.ServiceEntry, bufferSize)
+        mdns.Query(&mdns.QueryParam{Service: serviceName, Domain: "local", Timeout: timeout, Entries: entriesChan, DisableIPv6: true})
+        entries, _, _, _ := lo.BufferWithTimeout(entriesChan, bufferSize, timeout)
+        for _, entry := range entries {
+            addr := &net.TCPAddr{IP: entry.AddrV4, Port: entry.Port}
+            if entry.Info != peerID {
+                // handle newly discovered peer
             }
         }
     }
 }
     </code></pre>
+
+    <p>I know there's probably a cleaner way to write this logic but hey, it works</p>
 
     <h2>peer to peer communication</h2>
 
@@ -153,7 +151,7 @@ service Network {
     </code></pre>
 
     <p>
-        you then just need to implement the server interface. I decided to use a single rpc call with bidirectional
+        you then need to implement the server interface. I decided to use a single rpc call with bidirectional
         streaming in an attempt to dissolve the distinction between client and server gRPC implicitly has.
     </p>
 
@@ -175,7 +173,7 @@ func (s *server) Gossip(stream pb.Network_GossipServer) error {
     </code></pre>
 
     <p>
-        to actually register your server instance, you just need to bind it to a TCP socket. this is also where we get
+        to actually register your server instance, you need to bind it to a TCP socket. this is also where we get
         auto assigned port info to pass to our earlier broadcast function.
     </p>
 
@@ -190,6 +188,34 @@ func Serve(peerID string) int {
     return lis.Addr().(*net.TCPAddr).Port, nil
 }
     </code></pre>
+
+    <h2>authentication</h2>
+
+    <p>
+        while we know what peerID a node is advertising as from their DNS-SD Info data, we don't currently have any way
+        to validate that,
+        nor ensure that the traffic we're receiving hasn't been tampered with by a man in the middle attack.
+    </p>
+
+    <p>
+        so to address this I decided to tackle authentication. <a href="https://grpc.io/docs/guides/auth/"
+            target="_blank">gRPC supports a few
+            authentication schemes</a>, notably <a href="https://en.wikipedia.org/wiki/Transport_Layer_Security"
+            target="_blank">TLS</a>. unfortunately, gRPC's implementation only supports the standard x.509 certificate
+        scheme, which usually comes with the implication of a centralized certificate authority.
+    </p>
+
+    <p>
+        I decided to leverage self-signed certificates using the peer's ed25519 keys instead
+    </p>
+
+    <p>
+        another solution is to convert the peer's ed25519 key into x25519 key (following <a
+            href="https://words.filippo.io/using-ed25519-keys-for-encryption/" target="_blank"></a>something like this
+        blog post and <a href="github.com/teserakt-io/golang-ed25519/extra25519" target="_blank">this library</a>). the
+        x25519 key can then be used with the <a href="https://pkg.go.dev/crypto/ecdh" target="_blank">crypto/ecdh</a>
+        package to generate a shared secret that can be used to encrypt traffic.
+    </p>
 
     <script>hljs.highlightAll();</script>
 </body>
