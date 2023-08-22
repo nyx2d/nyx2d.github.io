@@ -206,7 +206,8 @@ func Serve(peerID string) int {
     </p>
 
     <p>
-        I decided to leverage self-signed certificates using the peer's ed25519 keys instead
+        at first I decided to leverage self-signed certificates using the peer's ed25519 keys instead, but this proved
+        more complex and less interesting than I would have liked.
     </p>
 
     <p>
@@ -215,6 +216,20 @@ func Serve(peerID string) int {
         blog post and <a href="github.com/teserakt-io/golang-ed25519/extra25519" target="_blank">this library</a>). the
         x25519 key can then be used with the <a href="https://pkg.go.dev/crypto/ecdh" target="_blank">crypto/ecdh</a>
         package to generate a shared secret that can be used to encrypt traffic.
+    </p>
+
+    <p>
+        a third, and the ultimate solution that I settled on, is to generate generate temporary x25519 keys for each
+        peer connection, and to preform a
+        elliptic-curve diffie-hellman key exchange to generate a shared secret. the public keys are each signed with the
+        peer's long term identity key to prove ownership.
+    </p>
+
+    <p>
+        here's the simple exchange I implemented:
+    </p>
+    <p>
+        <img src="/assets/ivy_key_exchange.png" style="max-width:ch;width:100%">
     </p>
 
     <script>hljs.highlightAll();</script>
