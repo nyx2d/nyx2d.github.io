@@ -29,7 +29,7 @@
     <hr>
 
     <h2 id="post-title">explorations in p2p development</h2>
-    <span id="date">[2023-08-19]</span>
+    <span id="date">[2023-11-04]</span>
 
     <p>
         this post is a work in progress. please note that in code snippets I have removed error handling for the sake of
@@ -226,11 +226,170 @@ func Serve(peerID string) int {
     </p>
 
     <p>
-        here's the simple exchange I implemented:
+        here's the simple exchange I decided on:
     </p>
     <p>
         <img src="/assets/ivy_key_exchange.png" style="max-width:ch;width:100%">
     </p>
+
+    <p>now that each client has a shared secret, they can use this for encryption between them.</p>
+
+    <h2>pivot to CBOR</h2>
+
+    <p>
+        it was at this point I grew frustrated with gRPC's client/server distinction, as I realized I would basically
+        need to roll my own RPC protocol inside
+        of the proto scheme. I decided it would be more fun to roll my own from scratch without gRPC's baggage. thus, I
+        decided to pivot to using a simple <a href="https://cbor.io/" target="_blank">CBOR</a> based protocol directly
+        over TCP
+        instead.
+    </p>
+
+    <pre><code class="language-go">
+func (c *Conn) SendMessage(m *Message) {
+    data := cbor.Marshal(m)
+    binary.Write(c.conn, binary.LittleEndian, uint64(len(data)))
+    c.conn.Write(data)
+}
+
+func (c *Conn) ReadMessage() *Message {
+    sizeBuf := make([]byte, 8)
+    io.ReadFull(c.conn, sizeBuf)
+
+    size := binary.LittleEndian.Uint64(sizeBuf)
+    readBuf := make([]byte, size)
+    io.ReadFull(c.conn, readBuf)
+
+    var m Message
+    cbor.Unmarshal(raw, &m)
+    return &msg
+}
+    </code></pre>
+
+    <p>
+        the protocol is exceptionally simple, just a little endian uint64 length prefix to a CBOR encoded message
+        struct. encrypted messages use the same scheme, and just dump the CBOR binary blobs into a wrapping object.
+        the key exchange works through the same protocol.
+    </p>
+
+    <pre><code class="language-go">
+type Message struct {
+    *Handshake
+    *Encrypted
+}
+
+type Encrypted struct {
+    Payload []byte // encrypted CBOR encoded message
+}
+
+type Handshake struct {
+    SigningPublicKey   []byte
+    TransportPublicKey []byte
+    Signature          []byte // sig of transport_pubkey by signing_pubkey
+}
+    </code></pre>
+
+    <h2>key exchange implementation</h2>
+
+    <p>
+        under the CBOR-based protocol, the key exchange is implemented as follows.
+    </p>
+
+    <p>
+        we track peers in this EncryptedConn struct:
+    </p>
+
+    <pre><code class="language-go">
+type EncryptedConn struct {
+    *Conn
+
+    // our temp keys for transport encryption
+    transportPublicKey  *ecdh.PublicKey
+    transportPrivateKey *ecdh.PrivateKey
+
+    peerTransportPublicKey *ecdh.PublicKey    // their temp public key for transport encryption
+    peerPublicSigningKey   *ed25519.PublicKey // their long term public signing key from the handshake
+
+    // our shared secret
+    transportSharedKey []byte
+    transportCipher    cipher.AEAD
+}
+</code></pre>
+
+    <p>for each new peer, we generate a temporary pair of "transport keys" that will be used for wire encryption.</p>
+
+    <pre><code class="language-go">
+func NewEncryptedConn(conn net.Conn) *EncryptedConn {
+    transportPrivateKey, _ := ecdh.X25519().GenerateKey(rand.Reader)
+    return &EncryptedConn{
+        Conn:                NewConn(conn),
+        transportPrivateKey: transportPrivateKey,
+        transportPublicKey:  transportPrivateKey.PublicKey(),
+    }
+}
+    </code></pre>
+
+    <p>handshakes are carried out as follows, with "client" or "server" only meaning who established the connection
+        first.</p>
+
+    <pre><code class="language-go">
+func (c *EncryptedConn) HandshakeAsClient(signingKey ed25519.PrivateKey) error {
+    c.Conn.SendMessage(c.buildHandshakeMessage(signingKey)); err != nil {
+    serverHandshake := c.Conn.ReadMessage()
+    if !c.verifyHandshake(serverHandshake) {
+        return errors.New("handshake verification failed")
+    }
+    c.deriveSharedKey()
+    return nil
+}
+
+func (c *EncryptedConn) HandshakeAsServer(signingKey ed25519.PrivateKey) error {
+    clientHandshake := c.Conn.ReadMessage()
+    if !c.verifyHandshake(clientHandshake) {
+        return errors.New("handshake verification failed")
+    }
+    c.Conn.SendMessage(c.buildHandshakeMessage(signingKey))
+    c.deriveSharedKey()
+    return nil
+}
+    </code></pre>
+
+    <p>
+        building the handshake message is straightforward, as is verification
+    </p>
+
+    <pre><code class="language-go">
+func (c *EncryptedConn) buildHandshakeMessage(signingKey ed25519.PrivateKey) *Message {
+    sig := ed25519.Sign(signingKey, c.transportPublicKey.Bytes())
+    return &Message{Handshake: &Handshake{
+        SigningPublicKey:   signingKey.Public().(ed25519.PublicKey),
+        TransportPublicKey: c.transportPublicKey.Bytes(),
+        Signature:          sig,
+    }}
+}
+
+// verifyHandshake mutates the conn to include the peer's public keys
+func (c *EncryptedConn) verifyHandshake(m *Message) bool {
+	peerTransportPublicKey, _ := ecdh.X25519().NewPublicKey(m.Handshake.TransportPublicKey)
+	ok := ed25519.Verify(m.Handshake.SigningPublicKey, m.Handshake.TransportPublicKey, m.Handshake.Signature)
+	if ok {
+		c.peerTransportPublicKey = peerTransportPublicKey
+		c.peerPublicSigningKey = (*ed25519.PublicKey)(&m.Handshake.SigningPublicKey)
+	}
+	return ok
+}
+    </code></pre>
+
+    <p>deriving the shared secret post handshake is similarly straightforward</p>
+
+    <pre><code class="language-go">
+func (c *EncryptedConn) deriveSharedKey() {
+    shared, _ := c.transportPrivateKey.ECDH(c.peerTransportPublicKey)
+    cypher, _ := chacha20poly1305.NewX(shared)
+    c.transportSharedKey = shared
+    c.transportCipher = cypher
+}
+    </code></pre>
 
     <script>hljs.highlightAll();</script>
 </body>
